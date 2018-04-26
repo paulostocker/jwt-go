@@ -1,6 +1,7 @@
 package request
 
 import (
+	"github.com/revel/revel"
 	"errors"
 	"net/http"
 )
@@ -15,6 +16,7 @@ var (
 // If no token is present, you must return ErrNoTokenInRequest.
 type Extractor interface {
 	ExtractToken(*http.Request) (string, error)
+	ExtractRevelToken(*revel.Request) (string, error)
 }
 
 // Extractor for finding a token in a header.  Looks at each specified
@@ -31,6 +33,15 @@ func (e HeaderExtractor) ExtractToken(req *http.Request) (string, error) {
 	return "", ErrNoTokenInRequest
 }
 
+func (e HeaderExtractor) ExtractRevelToken(req *revel.Request) (string, error) {
+	// loop over header names and return the first one that contains data
+	for _, header := range e {
+		if ah := req.Header.Get(header); ah != "" {
+			return ah, nil
+		}
+	}
+	return "", ErrNoTokenInRequest
+}
 // Extract token from request arguments.  This includes a POSTed form or
 // GET URL arguments.  Argument names are tried in order until there's a match.
 // This extractor calls `ParseMultipartForm` on the request
@@ -50,6 +61,19 @@ func (e ArgumentExtractor) ExtractToken(req *http.Request) (string, error) {
 	return "", ErrNoTokenInRequest
 }
 
+func (e ArgumentExtractor) ExtractRevelToken(req *revel.Request) (string, error) {
+	// Make sure form is parsed
+	req.ParseMultipartForm(10e6)
+
+	// loop over arg names and return the first one that contains data
+	for _, arg := range e {
+		if ah := req.Form.Get(arg); ah != "" {
+			return ah, nil
+		}
+	}
+
+	return "", ErrNoTokenInRequest
+}
 // Tries Extractors in order until one returns a token string or an error occurs
 type MultiExtractor []Extractor
 
@@ -65,6 +89,17 @@ func (e MultiExtractor) ExtractToken(req *http.Request) (string, error) {
 	return "", ErrNoTokenInRequest
 }
 
+func (e MultiExtractor) ExtractRevelToken(req *revel.Request) (string, error) {
+	// loop over header names and return the first one that contains data
+	for _, extractor := range e {
+		if tok, err := extractor.ExtractRevelToken(req); tok != "" {
+			return tok, nil
+		} else if err != ErrNoTokenInRequest {
+			return "", err
+		}
+	}
+	return "", ErrNoTokenInRequest
+}
 // Wrap an Extractor in this to post-process the value before it's handed off.
 // See AuthorizationHeaderExtractor for an example
 type PostExtractionFilter struct {
@@ -74,6 +109,14 @@ type PostExtractionFilter struct {
 
 func (e *PostExtractionFilter) ExtractToken(req *http.Request) (string, error) {
 	if tok, err := e.Extractor.ExtractToken(req); tok != "" {
+		return e.Filter(tok)
+	} else {
+		return "", err
+	}
+}
+
+func (e *PostExtractionFilter) ExtractRevelToken(req *revel.Request) (string, error) {
+	if tok, err := e.Extractor.ExtractRevelToken(req); tok != "" {
 		return e.Filter(tok)
 	} else {
 		return "", err

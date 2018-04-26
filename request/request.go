@@ -1,6 +1,7 @@
 package request
 
 import (
+	"github.com/revel/revel"
 	"github.com/dgrijalva/jwt-go"
 	"net/http"
 )
@@ -38,10 +39,42 @@ func ParseFromRequest(req *http.Request, extractor Extractor, keyFunc jwt.Keyfun
 	return p.parser.ParseWithClaims(tokenString, p.claims, keyFunc)
 }
 
+func ParseFromRevelRequest(req *revel.Request, extractor Extractor, keyFunc jwt.Keyfunc, options ...ParseFromRevelRequestOption) (token *jwt.Token, err error) {
+	// Create basic parser struct
+	p := &fromRevelRequestParser{req, extractor, nil, nil}
+
+	// Handle options
+	for _, option := range options {
+		option(p)
+	}
+
+	// Set defaults
+	if p.claims == nil {
+		p.claims = jwt.MapClaims{}
+	}
+	if p.parser == nil {
+		p.parser = &jwt.Parser{}
+	}
+
+	// perform extract
+	tokenString, err := p.extractor.ExtractRevelToken(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// perform parse
+	return p.parser.ParseWithClaims(tokenString, p.claims, keyFunc)
+}
+
 // ParseFromRequest but with custom Claims type
 // DEPRECATED: use ParseFromRequest and the WithClaims option
 func ParseFromRequestWithClaims(req *http.Request, extractor Extractor, claims jwt.Claims, keyFunc jwt.Keyfunc) (token *jwt.Token, err error) {
 	return ParseFromRequest(req, extractor, keyFunc, WithClaims(claims))
+}
+// ParseFromRequest but with custom Claims type
+// DEPRECATED: use ParseFromRequest and the WithClaims option
+func ParseFromRequestWithRevelClaims(req *revel.Request, extractor Extractor, claims jwt.Claims, keyFunc jwt.Keyfunc) (token *jwt.Token, err error) {
+	return ParseFromRevelRequest(req, extractor, keyFunc, WithRevelClaims(claims))
 }
 
 type fromRequestParser struct {
@@ -51,11 +84,26 @@ type fromRequestParser struct {
 	parser    *jwt.Parser
 }
 
+type fromRevelRequestParser struct {
+	req       *revel.Request
+	extractor Extractor
+	claims    jwt.Claims
+	parser    *jwt.Parser
+}
+
 type ParseFromRequestOption func(*fromRequestParser)
+type ParseFromRevelRequestOption func(*fromRevelRequestParser)
 
 // Parse with custom claims
 func WithClaims(claims jwt.Claims) ParseFromRequestOption {
 	return func(p *fromRequestParser) {
+		p.claims = claims
+	}
+}
+
+// Parse with custom claims
+func WithRevelClaims(claims jwt.Claims) ParseFromRevelRequestOption {
+	return func(p *fromRevelRequestParser) {
 		p.claims = claims
 	}
 }
