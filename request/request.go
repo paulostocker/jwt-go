@@ -2,7 +2,7 @@ package request
 
 import (
 	"github.com/revel/revel"
-	"github.com/dgrijalva/jwt-go"
+	"github.com/paulostocker/jwt-go"
 	"net/http"
 )
 
